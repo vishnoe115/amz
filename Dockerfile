@@ -24,4 +24,4 @@ COPY . .
 RUN chmod 0755 /app/docker-entrypoint.sh
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["--help"]
+CMD ["python3", "-m", "bot"]

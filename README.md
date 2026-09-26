@@ -1,88 +1,104 @@
-# Orpheus Amazon Music test repository
+# Amazon Music Telegram Test Bot
 
-Isolated Docker test build of OrpheusDL with the supplied Amazon Music module.
-It uses Amazon's browser OAuth flow and keeps login storage, downloads, and the
-Widevine device outside the Git repository.
+Telegram test bot built from OrpheusDL and the supplied Amazon Music module.
+Amazon authentication uses the official browser OAuth page; Amazon email and
+password are never stored in `config.env`.
 
-> Use this only with an Amazon Music account and Widevine device that you are
-> authorized to use. Do not commit or share your `.wvd`, cookies, tokens, or
+> Use only with an Amazon Music subscription and Widevine device that you are
+> authorized to use. Never commit or share `.wvd`, cookies, tokens, or
 > `config/loginstorage.bin`.
 
-## Requirements
-
-- Docker with the Compose plugin
-- An active Amazon Music account
-- A valid, legally provisioned `.wvd` file for your own device
-
-## Quick start
+## Configuration
 
 ```bash
 git clone https://github.com/vishnoe115/amz.git
 cd amz
-cp .env.example .env
+cp config.env.example config.env
 ```
 
-Place the device file at `./device.wvd`. If it is stored elsewhere, edit
-`WVD_FILE` in `.env`. Set `AMZ_COUNTRY` to the two-letter storefront country of
-the Amazon account.
+Edit `config.env`:
 
-Build the image:
+```env
+BOT_TOKEN=123456:telegram_bot_token
+API_ID=12345678
+API_HASH=telegram_api_hash
+ADMINS=123456789
+BOT_USERNAME=your_bot_username
+AMZ_COUNTRY=US
+DOWNLOAD_TIMEOUT=7200
+```
+
+Multiple admins may be separated with commas:
+
+```env
+ADMINS=123456789,987654321
+```
+
+Copy your legally provisioned Widevine device to the project root:
 
 ```bash
-docker compose build
+cp /path/to/your/device.wvd ./device.wvd
+chmod 600 device.wvd config.env
 ```
 
-Start a download with an Amazon Music URL:
+The Docker configuration mounts `device.wvd` read-only. It is excluded from
+Git and from the Docker build context.
+
+## Start the bot
 
 ```bash
-docker compose run --rm amazon-music "https://music.amazon.com/albums/ALBUM_ID"
+docker compose up -d --build
+docker compose logs -f
 ```
 
-During the first run, the terminal prints an Amazon authorization URL:
-
-1. Open that URL in a normal browser.
-2. Sign in directly on Amazon and finish CAPTCHA/MFA when requested.
-3. The final browser page may show an error; this is expected.
-4. Copy the complete final URL from the address bar.
-5. Paste it into the Docker terminal and press Enter.
-
-The reusable Amazon session is stored locally in `config/loginstorage.bin`.
-The next download normally will not require another login. Downloaded media is
-written to `./downloads`.
-
-## Other commands
-
-Open a temporary shell for diagnostics:
+Docker Compose v1:
 
 ```bash
-docker compose run --rm --entrypoint /bin/sh amazon-music
+docker-compose up -d --build
+docker-compose logs -f
 ```
 
-Reset only the Amazon login session while keeping a recoverable backup:
+## Login Amazon Music
 
-```bash
-mv config/loginstorage.bin config/loginstorage.bin.backup
+1. Open a private chat with the Telegram bot.
+2. Send `/amazon_login` from a Telegram ID listed in `ADMINS`.
+3. Press **Login Amazon**.
+4. Sign in on Amazon and complete CAPTCHA/MFA if requested.
+5. The last browser page may show an error; this is expected.
+6. Copy the complete URL from the browser address bar.
+7. Send that URL back to the bot's private chat.
+8. Wait for `Login Amazon Music berhasil`.
+
+The reusable session is stored only in the mounted `config` directory as
+`config/loginstorage.bin`. Check it with `/amazon_status`.
+
+## Test a download
+
+Send a track, album, or playlist link such as:
+
+```text
+https://music.amazon.com/albums/ALBUM_ID
 ```
 
-Run another download afterward to perform browser login again.
+Downloads run one task at a time. Audio files are uploaded to the requesting
+Telegram chat and temporary files are removed afterward.
 
-## Security notes
+## Commands
 
-- The original credential-object debug statement was removed because that
-  object contains reusable tokens, cookies, and a device signing key.
-- `.wvd`, session files, configuration, and downloads are excluded from Git and
-  Docker build context.
-- Do not publish Docker logs produced with debug mode enabled.
-- This repository does not contain a `.wvd` file or Amazon credentials.
+- `/start` — bot and login status
+- `/amazon_login` — begin Amazon browser login; admin and private chat only
+- `/amazon_status` — check whether a cached Amazon session exists
 
-## Included components
+## Included runtime
 
 - OrpheusDL core
-- Supplied `amazonmusic` module
+- Supplied Amazon Music module
+- Pyrogram Telegram frontend
 - Shaka Packager `v3.9.3`
 - Bento4 `mp4decrypt` `1.6.0-641`
-- FFmpeg from Debian
+- FFmpeg
 
-The supplied Amazon module did not include an explicit license file. Confirm
-redistribution permission with its author before distributing this repository
-to third parties.
+The original credential-object debug statement was removed because it could
+expose access tokens, cookies, and the device signing key. The supplied Amazon
+module did not include an explicit license file; confirm redistribution rights
+with its author before sharing this repository further.

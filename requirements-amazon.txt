@@ -8,3 +8,5 @@ rsa==4.9
 xmltodict==0.13.0
 python-dateutil
 brotli
+pyrogram==2.0.106
+tgcrypto==1.2.5

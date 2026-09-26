@@ -10,6 +10,7 @@ temp/
 *.bin
 *.pickle
 .env
+config.env
 downloads/
 temp/
 .python-version

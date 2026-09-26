@@ -12,4 +12,9 @@ python3 /app/scripts/configure.py
 chmod 0700 /app/config 2>/dev/null || true
 chmod 0600 /app/config/settings.json /app/config/loginstorage.bin 2>/dev/null || true
 
-exec python3 /app/orpheus.py "$@"
+if [ "${1:-}" = "cli" ]; then
+    shift
+    exec python3 /app/orpheus.py "$@"
+fi
+
+exec "$@"
