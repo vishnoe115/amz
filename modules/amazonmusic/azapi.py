@@ -311,6 +311,34 @@ class AmazonMusicMobileAPI:
         resp = self._wait_for_response(self.session, request)
         return resp
 
+    def _music_api_call(
+        self,
+        service: str,
+        target: str,
+        data: dict,
+        region_to_use: typing.Optional[AmazonRegion] = None,
+        user_agent: typing.Optional[str] = None,
+        extra_headers: typing.Optional[dict] = None,
+    ) -> httpx.Response:
+        """Call an Amazon Music API endpoint with its canonical URL/headers."""
+        region = region_to_use or self.credentials.account_region
+        headers = {
+            "x-amz-target": target,
+            "x-amz-requestid": str(uuid.uuid4()),
+        }
+        if user_agent:
+            headers["User-Agent"] = user_agent
+        if extra_headers:
+            headers |= extra_headers
+        return self.post(
+            url=(
+                f"https://music.amazon.{region.domain_tld}/"
+                f"{region.region.name}/api/{service}/"
+            ),
+            headers=headers,
+            data=data,
+        )
+
     def get(self, url: str, headers: typing.Optional[dict] = None) -> httpx.Response:
         if not headers:
             headers = {}
@@ -1106,9 +1134,10 @@ class AmazonMusicMobileAPI:
 
         Entitlement is not possible without the proper widevine device, 9480
         """
-        response = self.post(
-            url=f"https://music.amazon.{self.credentials.account_region.domain_tld}/{self.credentials.account_region.region.name}/api/dmls/getLicenseForPlaybackV2",
-            data={
+        response = self._music_api_call(
+            "dmls/getLicenseForPlaybackV2",
+            "com.amazon.digitalmusiclocator.DigitalMusicLocatorServiceExternal.getLicenseForPlaybackV2",
+            {
                 "DrmType": str(drm_type),
                 "appInfo": {
                     "musicAgent": f"Harley/{self.harley_version} Harley/{self.application_version} ( {str(uuid.uuid4())} {asin} )"
@@ -1120,10 +1149,8 @@ class AmazonMusicMobileAPI:
                 "licenseChallenge": challenge,
                 "persistent": False,
             },
-            headers={
-                "User-Agent": self.USER_AGENT,
-                "X-Amz-requestid": str(uuid.uuid4()),
-                "X-Amz-Target": "com.amazon.digitalmusiclocator.DigitalMusicLocatorServiceExternal.getLicenseForPlaybackV2",
+            user_agent=self.USER_AGENT,
+            extra_headers={
                 "Origin": f"https://music.amazon.{self.credentials.account_region.domain_tld}",
                 "Referer": f"https://music.amazon.{self.credentials.account_region.domain_tld}/",
             },
