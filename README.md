@@ -95,6 +95,8 @@ Telegram chat and temporary files are removed afterward.
 - `/start` — bot and login status
 - `/amazon_login` — begin Amazon browser login; admin and private chat only
 - `/amazon_status` — check whether a cached Amazon session exists
+- `/amazon_logout confirm` — clear the PostgreSQL session and back up the local
+  session before logging into Amazon again; admin and private chat only
 
 ## Included runtime
 

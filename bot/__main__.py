@@ -13,7 +13,7 @@ from pyrogram.enums import ParseMode
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from modules.amazonmusic.interface import ModuleInterface
-from bot.session_store import save_session_to_database
+from bot.session_store import clear_session_everywhere, save_session_to_database
 
 
 APP_ROOT = Path("/app")
@@ -164,6 +164,43 @@ async def status_handler(_: Client, message: Message):
     await message.reply_text(
         "✅ Session Amazon tersedia." if is_logged_in() else "❌ Session Amazon belum tersedia."
     )
+
+
+@app.on_message(filters.command("amazon_logout") & filters.private)
+async def logout_handler(_: Client, message: Message):
+    if not message.from_user or message.from_user.id not in ADMINS:
+        await message.reply_text("Perintah ini hanya untuk admin bot.")
+        return
+    command = (message.text or "").split(maxsplit=1)
+    if len(command) != 2 or command[1].strip().lower() != "confirm":
+        await message.reply_text(
+            "⚠️ Perintah ini mengeluarkan akun Amazon dari bot dan menghapus "
+            "session aktif dari PostgreSQL. Session lokal tetap dibuatkan backup.\n\n"
+            "Kirim <code>/amazon_logout confirm</code> untuk melanjutkan.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    if download_lock.locked() or login_lock.locked():
+        await message.reply_text("Tunggu sampai proses download/login yang sedang berjalan selesai.")
+        return
+    try:
+        database_deleted, backup_path = await asyncio.to_thread(clear_session_everywhere)
+        LOGGER.info(
+            "Amazon session cleared by admin %s (database_deleted=%s, backup=%s)",
+            message.from_user.id,
+            database_deleted,
+            backup_path,
+        )
+        await message.reply_text(
+            "✅ Session Amazon berhasil dibersihkan.\n"
+            "Sekarang jalankan /amazon_login untuk membuat session baru."
+        )
+    except Exception as exc:
+        LOGGER.exception("Failed to clear Amazon session")
+        await message.reply_text(
+            f"❌ Gagal membersihkan session: <code>{html.escape(str(exc))}</code>",
+            parse_mode=ParseMode.HTML,
+        )
 
 
 @app.on_message(filters.command("amazon_login") & filters.private)

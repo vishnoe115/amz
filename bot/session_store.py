@@ -1,6 +1,7 @@
 """Durable storage for Orpheus' Amazon login session blob."""
 
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg2
@@ -72,3 +73,28 @@ def save_session_to_database() -> bool:
             )
         connection.commit()
     return True
+
+
+def clear_session_everywhere() -> tuple[bool, str | None]:
+    """Delete the database copy and move the local session to a backup."""
+    database_url = _database_url()
+    database_deleted = False
+    if database_url:
+        with psycopg2.connect(database_url) as connection:
+            _ensure_table(connection)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "DELETE FROM amz_runtime_state WHERE state_key = %s",
+                    (SESSION_KEY,),
+                )
+                database_deleted = cursor.rowcount > 0
+            connection.commit()
+
+    backup_path = None
+    if SESSION_PATH.is_file():
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup = SESSION_PATH.with_name(f"loginstorage.bin.backup-{timestamp}")
+        SESSION_PATH.replace(backup)
+        backup_path = str(backup)
+
+    return database_deleted, backup_path

@@ -8,7 +8,11 @@ APP_ROOT = Path(__file__).resolve().parents[1]
 if str(APP_ROOT) not in sys.path:
     sys.path.insert(0, str(APP_ROOT))
 
-from bot.session_store import restore_session_from_database, save_session_to_database
+from bot.session_store import (
+    clear_session_everywhere,
+    restore_session_from_database,
+    save_session_to_database,
+)
 
 
 def main() -> None:
@@ -20,8 +24,14 @@ def main() -> None:
         elif action == "save":
             changed = save_session_to_database()
             print("DATABASE : Amazon session saved" if changed else "DATABASE : No Amazon session to save")
+        elif action == "clear":
+            database_deleted, backup_path = clear_session_everywhere()
+            print(
+                "DATABASE : Amazon session cleared "
+                f"(database_deleted={database_deleted}, local_backup={backup_path or 'none'})"
+            )
         else:
-            raise SystemExit("Usage: session_sync.py [restore|save]")
+            raise SystemExit("Usage: session_sync.py [restore|save|clear]")
     except Exception as exc:
         # Keep the bot usable with its local volume during a temporary database
         # outage. A later successful login/download will retry the upsert.
