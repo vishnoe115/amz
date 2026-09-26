@@ -1,8 +1,11 @@
 import asyncio
 import html
+import logging
 import os
 import re
 import shutil
+import time
+from collections import deque
 from pathlib import Path
 
 from pyrogram import Client, filters
@@ -22,6 +25,11 @@ AMAZON_URL_RE = re.compile(
 )
 OAUTH_URL_RE = re.compile(r"https://[^\s]+(?:openid|oauth)[^\s]+", re.IGNORECASE)
 AUDIO_SUFFIXES = {".flac", ".m4a", ".mp3", ".wav", ".ogg", ".opus"}
+LOGGER = logging.getLogger("amazon_telegram_bot")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+)
 
 
 def required_env(name: str) -> str:
@@ -59,6 +67,70 @@ def is_logged_in() -> bool:
         return ModuleInterface.has_cached_credentials(str(LOGIN_STORAGE))
     except Exception:
         return False
+
+
+async def run_download_process(
+    process: asyncio.subprocess.Process,
+    status: Message,
+) -> tuple[int, str]:
+    """Stream Orpheus output to Docker logs and retain a bounded error tail."""
+    started = time.monotonic()
+    output_tail: deque[str] = deque(maxlen=120)
+
+    async def pump_output() -> None:
+        pending = ""
+        while True:
+            chunk = await process.stdout.read(8192)
+            if not chunk:
+                break
+            pending += chunk.decode("utf-8", errors="replace")
+            parts = re.split(r"[\r\n]+", pending)
+            pending = parts.pop() if parts else ""
+            for line in parts:
+                line = line.strip()
+                if not line:
+                    continue
+                output_tail.append(line)
+                # tqdm emits hundreds of carriage-return progress frames. Keep
+                # those out of Docker logs while retaining warnings/errors and
+                # normal Orpheus state messages.
+                if "%|" not in line or "Warning:" in line or "Error" in line:
+                    LOGGER.info("ORPHEUS : %s", line)
+        pending = pending.strip()
+        if pending:
+            output_tail.append(pending)
+            LOGGER.info("ORPHEUS : %s", pending)
+
+    pump_task = asyncio.create_task(pump_output())
+    try:
+        while process.returncode is None:
+            elapsed = int(time.monotonic() - started)
+            remaining = DOWNLOAD_TIMEOUT - elapsed
+            if remaining <= 0:
+                raise asyncio.TimeoutError
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(process.wait()), timeout=min(30, remaining)
+                )
+            except asyncio.TimeoutError:
+                elapsed = int(time.monotonic() - started)
+                elapsed_minutes, elapsed_seconds = divmod(elapsed, 60)
+                try:
+                    await status.edit_text(
+                        "⏳ Download Amazon Music sedang berjalan...\n"
+                        f"Waktu: <code>{elapsed_minutes:02d}:{elapsed_seconds:02d}</code>",
+                        parse_mode=ParseMode.HTML,
+                    )
+                except Exception as exc:
+                    LOGGER.warning("Failed to update download heartbeat: %s", exc)
+        await pump_task
+        return process.returncode or 0, "\n".join(output_tail)
+    except BaseException:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+        await pump_task
+        raise
 
 
 async def read_login_url(process: asyncio.subprocess.Process) -> tuple[str | None, str]:
@@ -217,13 +289,12 @@ async def download_handler(client: Client, message: Message):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
-            output, _ = await asyncio.wait_for(process.communicate(), timeout=DOWNLOAD_TIMEOUT)
-            log = output.decode("utf-8", errors="replace")
+            return_code, log = await run_download_process(process, status)
             files = sorted(
                 path for path in task_dir.rglob("*")
                 if path.is_file() and path.suffix.lower() in AUDIO_SUFFIXES
             )
-            if process.returncode != 0 or not files:
+            if return_code != 0 or not files:
                 reason = log[-1800:] or "Tidak ada file audio yang dihasilkan."
                 await status.edit_text(
                     "❌ Download Amazon Music gagal.\n\n"
@@ -242,7 +313,16 @@ async def download_handler(client: Client, message: Message):
                 process.kill()
                 await process.wait()
             await status.edit_text("❌ Download dihentikan karena melewati batas waktu.")
+            LOGGER.error("Download timed out for %s", link)
+        except asyncio.CancelledError:
+            LOGGER.warning("Download task cancelled for %s", link)
+            try:
+                await status.edit_text("⚠️ Download berhenti karena proses bot dihentikan atau direstart.")
+            except Exception:
+                pass
+            raise
         except Exception as exc:
+            LOGGER.exception("Download handler failed for %s", link)
             await status.edit_text(f"❌ Error: <code>{html.escape(str(exc))}</code>", parse_mode=ParseMode.HTML)
         finally:
             try:
