@@ -10,3 +10,4 @@ python-dateutil
 brotli
 pyrogram==2.0.106
 tgcrypto==1.2.5
+psycopg2-binary==2.9.10

@@ -10,6 +10,7 @@ from pyrogram.enums import ParseMode
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from modules.amazonmusic.interface import ModuleInterface
+from bot.session_store import save_session_to_database
 
 
 APP_ROOT = Path("/app")
@@ -165,6 +166,12 @@ async def login_callback_handler(_: Client, message: Message):
         output, _ = await asyncio.wait_for(process.communicate(), timeout=300)
         result = output.decode("utf-8", errors="replace")
         if process.returncode == 0 and ("AMAZON_LOGIN_SUCCESS" in result or is_logged_in()):
+            try:
+                await asyncio.to_thread(save_session_to_database)
+            except Exception:
+                # Login is still valid in the persistent local volume. The
+                # database backup will be retried after a later task.
+                pass
             await message.reply_text("✅ Login Amazon Music berhasil. Session sudah disimpan dan bot siap digunakan.")
         else:
             await message.reply_text(
@@ -238,6 +245,12 @@ async def download_handler(client: Client, message: Message):
         except Exception as exc:
             await status.edit_text(f"❌ Error: <code>{html.escape(str(exc))}</code>", parse_mode=ParseMode.HTML)
         finally:
+            try:
+                await asyncio.to_thread(save_session_to_database)
+            except Exception:
+                # The local persistent volume remains the fallback. Database
+                # sync will be retried by the next login/download.
+                pass
             shutil.rmtree(task_dir, ignore_errors=True)
 
 

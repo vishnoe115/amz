@@ -24,6 +24,7 @@ API_ID=12345678
 API_HASH=telegram_api_hash
 ADMINS=123456789
 BOT_USERNAME=your_bot_username
+DATABASE_URL=postgresql://user:password@host:5432/database
 AMZ_COUNTRY=US
 DOWNLOAD_TIMEOUT=7200
 ```
@@ -69,8 +70,14 @@ docker-compose logs -f
 7. Send that URL back to the bot's private chat.
 8. Wait for `Login Amazon Music berhasil`.
 
-The reusable session is stored only in the mounted `config` directory as
-`config/loginstorage.bin`. Check it with `/amazon_status`.
+The reusable session is stored in the mounted `config` directory as
+`config/loginstorage.bin` and backed up to PostgreSQL. At startup, the bot
+restores the database copy before Orpheus initializes. Check the session with
+`/amazon_status`.
+
+The database account must be allowed to create and update the table
+`amz_runtime_state`. The session is stored in a `BYTEA` column; keep the
+database private because the session contains reusable Amazon credentials.
 
 ## Test a download
 
