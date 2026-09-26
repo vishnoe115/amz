@@ -1,0 +1,13 @@
+services:
+  amazon-music:
+    build: .
+    image: orpheus-amazon-music:local
+    stdin_open: true
+    tty: true
+    environment:
+      AMZ_COUNTRY: ${AMZ_COUNTRY:-US}
+      AMZ_WVD_PATH: /run/secrets/amazon.wvd
+    volumes:
+      - ./config:/app/config
+      - ./downloads:/app/downloads
+      - ${WVD_FILE:-./device.wvd}:/run/secrets/amazon.wvd:ro

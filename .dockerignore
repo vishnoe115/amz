@@ -1,0 +1,10 @@
+.git
+.github
+config
+downloads
+temp
+*.wvd
+*.bin
+*.pickle
+__pycache__
+*.py[cod]
